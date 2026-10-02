@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent-flow · 工作流编排引擎</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --line:#30363d;
+  --fg:#e6edf3; --dim:#8b949e; --dim2:#6e7681;
+  --acc:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; --purple:#bc8cff;
+  --cyan:#39c5cf;
+  --mono:'SF Mono',Consolas,'Liberation Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  font-size:14px;line-height:1.6;padding:24px 20px 60px}
+.wrap{max-width:1360px;margin:0 auto}
+header{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px}
+h1{font-size:22px;font-weight:600}
+h1 .ver{color:var(--dim2);font-size:13px;font-weight:400;margin-left:8px}
+.sub{color:var(--dim);font-size:13px;margin-top:6px;max-width:940px}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.badge{background:var(--panel2);border:1px solid var(--line);border-radius:20px;
+  padding:3px 11px;font-size:12px;color:var(--dim);font-family:var(--mono)}
+.badge b{color:var(--acc);font-weight:600}
+#dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim2);
+  margin-right:6px;vertical-align:middle}
+#dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+#dot.bad{background:var(--err)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:16px 18px;margin-bottom:16px}
+h2{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--acc);color:#0d1117;width:21px;height:21px;border-radius:4px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+h3{font-size:13px;font-weight:600;color:var(--dim);margin:14px 0 8px;text-transform:uppercase;letter-spacing:.6px}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:5px;
+  color:var(--fg);padding:6px 9px;font-size:13px;font-family:var(--mono);width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+label{font-size:12px;color:var(--dim)}
+button{background:var(--acc);color:#0d1117;border:none;border-radius:5px;
+  padding:7px 15px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+button:hover:not(:disabled){filter:brightness(1.12)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+button.ghost:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+button.ok{background:var(--ok)} button.err{background:var(--err);color:#fff}
+button.warnb{background:var(--warn)}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--mono)}
+th,td{text-align:left;padding:5px 9px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:500;font-size:12px;text-transform:uppercase}
+td.n,th.n{text-align:right}
+tbody tr:hover{background:var(--panel2)}
+.good{color:var(--ok)} .mid{color:var(--warn)} .bad{color:var(--err)} .muted{color:var(--dim2)}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;
+  overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55;max-height:340px}
+.note{background:var(--panel2);border-left:3px solid var(--acc);padding:9px 13px;
+  font-size:12.5px;color:var(--dim);border-radius:0 5px 5px 0;margin-top:11px}
+.note.warn{border-left-color:var(--warn)} .note.ok{border-left-color:var(--ok)}
+.note b{color:var(--fg)} .note code{font-family:var(--mono);color:var(--cyan);font-size:12px}
+#dagSvg{background:var(--bg);border:1px solid var(--line);border-radius:6px;width:100%;height:330px}
+.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:11px 13px}
+.card .t{font-size:12px;color:var(--dim)}
+.card .v{font-size:19px;font-weight:600;font-family:var(--mono);margin-top:2px}
+.card .d{font-size:11px;color:var(--dim2);margin-top:2px}
+.pending{fill:#1c2129;stroke:#30363d}
+.running{fill:#1f3a5f;stroke:#58a6ff}
+.succeeded{fill:#12261e;stroke:#3fb950}
+.failed{fill:#3a1a1e;stroke:#f85149}
+.skipped{fill:#161b22;stroke:#6e7681;stroke-dasharray:4,3}
+.waiting{fill:#33290f;stroke:#d29922}
+.compensated{fill:#2a1f3d;stroke:#bc8cff}
+.compensation{fill:#241a33;stroke:#bc8cff;stroke-dasharray:4,3}
+.edge{stroke:#30363d;fill:none;marker-end:url(#arrow)}
+.edge.active{stroke:#58a6ff;stroke-width:2}
+.edge.skippedEdge{stroke:#6e7681;stroke-dasharray:4,3;opacity:.55}
+.nodeLabel{fill:#e6edf3;font-size:12px;text-anchor:middle;pointer-events:none}
+.nodeStatus{fill:#8b949e;font-size:10px;text-anchor:middle;pointer-events:none;font-family:var(--mono)}
+.branchLabel{fill:#d29922;font-size:10px;text-anchor:middle;font-family:var(--mono)}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
+  border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;
+  vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+#toast{position:fixed;right:18px;bottom:18px;background:var(--panel);
+  border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:6px;
+  padding:11px 15px;max-width:440px;font-size:13px;z-index:99;box-shadow:0 6px 22px rgba(0,0,0,.5)}
+#toast.err{border-left-color:var(--err)} #toast.ok{border-left-color:var(--ok)}
+.timeline{border-left:2px solid var(--line);margin-left:8px;padding-left:16px}
+.tl{position:relative;padding:4px 0;font-family:var(--mono);font-size:12px}
+.tl::before{content:'';position:absolute;left:-21px;top:11px;width:8px;height:8px;
+  border-radius:50%;background:var(--dim2)}
+.tl.hit::before{background:var(--acc)}
+.tl.crash::before{background:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>agent-flow<span class="ver" id="ver"></span></h1>
+  <div class="sub">工作流 DAG 引擎：条件分支、跳过传播、失败补偿（saga）、人工审批挂起、断点续跑。
+  表达式用白名单 AST 求值，不走 <code>eval</code>。每次运行留下完整事件日志 ——
+  「这条路径怎么走进来的」有据可查。</div>
+  <div class="badges">
+    <span class="badge">服务 <span id="dot"></span><b id="healthTxt">检测中</b></span>
+    <span class="badge">工作流 <b id="wfCount">0</b></span>
+    <span class="badge">运行 <b id="runCount">0</b></span>
+    <span class="badge">当前 <b id="curRun">—</b></span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">1</span>工作流结构（服务端拓扑）</h2>
+  <div class="sub" style="margin-bottom:8px">
+    提交 → 金额判断（&gt; 1000 走主管审批，否则自动通过）→ 通过走财务复核 / 驳回。
+    <code>财务复核</code> 带补偿节点 <code>冲销入账</code>：取消或失败时按完成逆序回滚。
+  </div>
+  <svg id="dagSvg" viewBox="0 0 1000 272">
+    <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6e7681"/></marker></defs>
+    <g id="dagG"></g>
+  </svg>
+  <div class="note">图由<b>服务端返回的拓扑结构</b>现画，节点颜色对应运行状态。
+  虚线边 = 该分支这次没被选中（skipped）；紫框虚线 = 补偿节点（只在失败/取消路径上被调度）。</div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>发起运行</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="t">报销金额（触发条件分支）</div>
+      <input id="amount" type="number" value="1500">
+      <div class="d">&gt; 1000 走主管审批；≤ 1000 自动通过</div>
+    </div>
+    <div class="card">
+      <div class="t">事由</div>
+      <input id="title" type="text" value="差旅报销">
+      <div class="d">会被引擎表达式拼进输出</div>
+    </div>
+  </div>
+  <div class="row">
+    <button id="btnStart">发起运行</button>
+    <button class="ghost ok" id="btnApprove" disabled>✓ 批准</button>
+    <button class="ghost err" id="btnReject" disabled>✗ 驳回</button>
+    <button class="ghost warnb" id="btnCancel" disabled>取消并回滚</button>
+    <button class="ghost" id="btnCrash" disabled>模拟进程崩溃</button>
+    <button class="ghost" id="btnResume" disabled>断点续跑</button>
+    <button class="ghost" id="btnArchive" disabled>导出存档</button>
+    <button class="ghost" id="btnRestore" disabled>从存档恢复</button>
+  </div>
+  <div id="runOut" class="hidden" style="margin-top:12px"></div>
+  <div id="archiveBox" class="hidden" style="margin-top:10px"></div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>事件日志</h2>
+  <div id="events" class="timeline" style="min-height:40px;color:var(--dim2);font-size:13px">
+    还没有运行。先点上面的「发起运行」。
+  </div>
+</section>
+
+<footer style="color:var(--dim2);font-size:12px;text-align:center;margin-top:24px">
+  调度 / 状态机 / 白名单表达式均为纯 Python 标准库实现 · FastAPI 仅在 HTTP 层
+</footer>
+</div>
+<div id="toast" class="hidden"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { run:null, workflow:null, archive:null };
+let toastTimer;
+function toast(msg, kind=''){ const el=$('#toast'); el.textContent=msg;
+  el.className=kind; el.classList.remove('hidden');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.add('hidden'),5000); }
+const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+const NODE_STATUS_TEXT = {
+  pending:'待执行', running:'执行中', waiting:'待审批', succeeded:'成功',
+  failed:'失败', skipped:'跳过', compensated:'已补偿',
+};
+
+async function health(){
+  try{
+    const d = await (await fetch('/api/health')).json();
+    $('#healthTxt').textContent='正常'; $('#dot').className='on';
+    $('#ver').textContent='v'+d.version; $('#wfCount').textContent=d.workflows;
+    $('#runCount').textContent=d.runs;
+    // /api/workflow 返回的是 {items:[...], count:n}。
+    // 曾经这里直接把整个响应当工作流对象传给 drawDag，
+    // 于是 wf.edges 是 undefined，图区一片空白且控制台报 TypeError。
+    const lst = await (await fetch('/api/workflow')).json();
+    const wf = (lst.items && lst.items.length) ? lst.items[0] : null;
+    if (!wf){ toast('服务端没有注册任何工作流','err'); return; }
+    state.workflow = wf;
+    drawDag(wf, state.run);
+  }catch(e){ $('#healthTxt').textContent='离线'; $('#dot').className='bad'; }
+}
+
+/* ---------- DAG 布局与绘制 ---------- */
+function layout(wf){
+  const order = wf.topological_order;
+  const depth = {};
+  order.forEach(id => {
+    const ins = wf.edges.filter(e => e.to === id);
+    depth[id] = ins.length ? Math.max(...ins.map(e => depth[e.from] + 1)) : 0;
+  });
+  // 补偿节点从入口不可达（校验规则强制它不进主流程），
+  // 上面算出来 depth=0 会跟入口节点叠在一起。单独放最右一列。
+  const reachable = new Set(wf.entry || []);
+  (wf.entry || []).forEach(e => {
+    const stack=[e];
+    while(stack.length){ const c=stack.pop();
+      wf.edges.filter(x=>x.from===c).forEach(x=>{
+        if(!reachable.has(x.to)){ reachable.add(x.to); stack.push(x.to); } }); }
+  });
+  const maxD = Math.max(0, ...Object.values(depth));
+  const comp = wf.nodes.filter(n => !reachable.has(n.id)).map(n => n.id);
+  comp.forEach(id => { depth[id] = maxD + 1; });
+
+  const byDepth = {};
+  order.forEach(id => (byDepth[depth[id]] = byDepth[depth[id]] || []).push(id));
+  const nodeW = 120, nodeH = 46;
+  const pos = {};
+  Object.entries(byDepth).forEach(([d, ids]) => {
+    ids.forEach((id, i) => {
+      pos[id] = {
+        x: 55 + (+d) * 185,
+        y: 66 + i * 78 + (3 - Math.min(ids.length, 4)) * 24,
+        w: nodeW, h: nodeH,
+      };
+    });
+  });
+  return { pos, comp:new Set(comp) };
+}
+
+function drawDag(wf, run){
+  const g = $('#dagG');
+  while (g.firstChild) g.removeChild(g.firstChild);
+  const { pos, comp } = layout(wf);
+  const ns = run ? run.nodes : {};
+  const activeBranches = run ? branchTaken(run) : {};
+
+  // 边
+  wf.edges.forEach(e => {
+    const a = pos[e.from], b = pos[e.to];
+    if (!a || !b) return;
+    const x1 = a.x + a.w/2, y1 = a.y + a.h;
+    const x2 = b.x + b.w/2, y2 = b.y;
+    // 两种"这条边这次没走"：①分支节点没选中它；②上游整个被跳过了。
+    // 只判①的话，跳过的传播链（manager 被跳 → finance 也被跳）
+    // 在图上看不出来 —— 明明是同一件事，图却只画出一半。
+    const srcStatus = ns[e.from] ? ns[e.from].status : null;
+    const skipped = run && (
+      (e.from in activeBranches && activeBranches[e.from] !== e.branch)
+      || srcStatus === 'skipped'
+    );
+    const walked = run && !skipped && (ns[e.to] && ns[e.to].status !== 'pending');
+    const cls = 'edge' + (skipped ? ' skippedEdge' : (walked ? ' active' : ''));
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const midY = (y1 + y2) / 2;
+    path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`);
+    path.setAttribute('class', cls);
+    g.appendChild(path);
+    if (e.branch) {
+      const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x', (x1+x2)/2); t.setAttribute('y', midY - 4);
+      t.setAttribute('class','branchLabel');
+      t.textContent = e.branch + (skipped ? '（未走）' : '');
+      g.appendChild(t);
+    }
+  });
+
+  // 节点
+  wf.nodes.forEach(n => {
+    const p = pos[n.id];
+    if (!p) return;
+    const st = ns[n.id] ? ns[n.id].status : 'pending';
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', p.x); rect.setAttribute('y', p.y);
+    rect.setAttribute('width', p.w); rect.setAttribute('height', p.h);
+    rect.setAttribute('rx', 7);
+    rect.setAttribute('class', st);
+    rect.setAttribute('stroke-width', st==='running' ? 2.2 : 1.4);
+    g.appendChild(rect);
+    if (comp.has(n.id)) {   // 补偿节点：紫色虚线外框，和主流程区分开
+      const ring = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      ring.setAttribute('x', p.x-4); ring.setAttribute('y', p.y-4);
+      ring.setAttribute('width', p.w+8); ring.setAttribute('height', p.h+8);
+      ring.setAttribute('rx', 9); ring.setAttribute('class','compensation');
+      ring.setAttribute('fill','none');
+      g.appendChild(ring);
+    }
+    const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x', p.x + p.w/2); label.setAttribute('y', p.y + 19);
+    label.setAttribute('class','nodeLabel');
+    label.textContent = n.label || n.id;
+    g.appendChild(label);
+    const sub = document.createElementNS('http://www.w3.org/2000/svg','text');
+    sub.setAttribute('x', p.x + p.w/2); sub.setAttribute('y', p.y + 36);
+    sub.setAttribute('class','nodeStatus');
+    sub.textContent = `${n.type}${comp.has(n.id) ? ' ⟲' : ''} · ${NODE_STATUS_TEXT[st] || st}`;
+    g.appendChild(sub);
+  });
+}
+
+function branchTaken(run){
+  // 从事件日志里找出每个分支节点实际走的分支
+  const taken = {};
+  (run.events||[]).forEach(ev => { if (ev.kind === 'branch') taken[ev.node] = ev.to; });
+  (run.events||[]).forEach(ev => {
+    if (ev.kind === 'approval' && ev.node) taken[ev.node] = ev.to;
+  });
+  return taken;
+}
+
+/* ---------- 运行 ---------- */
+$('#btnStart').onclick = async () => {
+  const btn = $('#btnStart');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>运行中';
+  try{
+    const r = await fetch('/api/run', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ workflow: state.workflow ? state.workflow.name : '报销审批',
+        payload:{ amount: +$('#amount').value, title: $('#title').value } }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || JSON.stringify(d));
+    state.run = d; state.archive = null;
+    $('#archiveBox').classList.add('hidden');
+    $('#curRun').textContent = d.run_id;
+    renderRun(d);
+    if (d.status === 'waiting_approval') toast('已挂起等待主管审批 —— 点「批准」或「驳回」继续', 'ok');
+    else toast('运行完成：' + d.status, 'ok');
+  }catch(e){ toast('失败：'+e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='发起运行'; refreshButtons(); }
+};
+
+function refreshButtons(){
+  const s = state.run ? state.run.status : null;
+  $('#btnApprove').disabled = s !== 'waiting_approval';
+  $('#btnReject').disabled = s !== 'waiting_approval';
+  $('#btnCancel').disabled = !(s === 'succeeded' || s === 'running' || s === 'waiting_approval');
+  $('#btnCrash').disabled  = !(s === 'succeeded' || s === 'failed');
+  $('#btnResume').disabled = s !== 'running';
+  $('#btnArchive').disabled = !s;
+  $('#btnRestore').disabled = !state.archive;
+}
+
+async function act(path, body){
+  if (!state.run) return null;
+  const r = await fetch(`/api/run/${state.run.run_id}/${path}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body || {}) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail || JSON.stringify(d));
+  state.run = d;
+  renderRun(d);
+  return d;
+}
+
+$('#btnApprove').onclick = async () => {
+  try{ await act('approve', {approved:true, comment:'同意'});
+    toast('已批准，流程继续到财务复核','ok'); }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnReject').onclick = async () => {
+  try{ await act('approve', {approved:false, comment:'不符合规定'});
+    toast('已驳回','ok'); }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnCancel').onclick = async () => {
+  try{ await act('cancel');
+    toast('已取消，已完成的步骤按逆序补偿','ok'); }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnCrash').onclick = async () => {
+  try{ const d = await act('crash');
+    toast('已模拟崩溃：最后完成的节点回退为 pending（模拟「完成未落盘」），'
+      + '点「断点续跑」看它重跑','ok'); }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnResume').onclick = async () => {
+  try{ await act('resume'); toast('已从断点续跑','ok'); }
+  catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnArchive').onclick = async () => {
+  try{
+    const d = await (await fetch(`/api/run/${state.run.run_id}/archive`)).json();
+    state.archive = d;
+    $('#archiveBox').classList.remove('hidden');
+    $('#archiveBox').innerHTML =
+      `<h3>存档（${d.bytes} 字节）</h3><pre>${esc(d.json)}</pre>`;
+    toast(`存档已导出：${d.bytes} 字节`,'ok');
+  }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+$('#btnRestore').onclick = async () => {
+  try{
+    const r = await fetch('/api/run/restore', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ json: state.archive.json }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || JSON.stringify(d));
+    state.run = d.run; renderRun(d.run);
+    toast(`已从存档恢复运行 ${d.restored}`,'ok');
+  }catch(e){ toast(e.message,'err'); }
+  refreshButtons();
+};
+
+function renderRun(run){
+  $('#runOut').classList.remove('hidden');
+  const counts = run.node_counts || {};
+  const stCls = run.status==='succeeded' ? 'good'
+    : (run.status==='failed' ? 'bad'
+      : (run.status==='waiting_approval' ? 'mid' : ''));
+  const cards = `
+    <div class="cards">
+      <div class="card"><div class="t">运行 ID</div><div class="v" style="font-size:15px">${run.run_id}</div></div>
+      <div class="card"><div class="t">状态</div><div class="v ${stCls}">${run.status}</div></div>
+      <div class="card"><div class="t">成功 / 跳过</div><div class="v">${counts.succeeded||0} / ${counts.skipped||0}</div></div>
+      <div class="card"><div class="t">补偿 / 失败</div><div class="v">${counts.compensated||0} / ${counts.failed||0}</div></div>
+      <div class="card"><div class="t">等待审批</div><div class="v">${run.pending_approval ? run.pending_approval.node_id : '—'}</div></div>
+    </div>`;
+  const rows = Object.values(run.nodes).map(n => `
+    <tr>
+      <td>${esc(n.node_id)}</td>
+      <td class="n">${n.attempts}</td>
+      <td class="n ${n.status==='succeeded'?'good':n.status==='failed'?'bad':n.status==='skipped'?'muted':n.status==='compensated'?'mid':''}">${n.status}</td>
+      <td class="n">${n.duration_ms === null || n.duration_ms === undefined ? '—' : n.duration_ms + ' ms'}</td>
+      <td>${n.error ? '<span class="bad">'+esc(n.error)+'</span>'
+        : (n.output !== null && n.output !== undefined ? '<code style="color:#39c5cf;font-size:12px">'+esc(JSON.stringify(n.output)).slice(0,80)+'</code>' : '—')}</td>
+    </tr>`).join('');
+  $('#runOut').innerHTML = cards + `
+    <h3>节点状态</h3>
+    <table><thead><tr><th>节点</th><th class="n">尝试</th><th class="n">状态</th>
+    <th class="n">耗时</th><th>输出 / 错误</th></tr></thead><tbody>${rows}</tbody></table>`;
+  drawDag(state.workflow, run);
+  renderEvents(run);
+}
+
+function renderEvents(run){
+  const box = $('#events');
+  if (!run.events || !run.events.length){ box.textContent='（无事件）'; return; }
+  box.innerHTML = run.events.map(ev => {
+    const extra = Object.entries(ev)
+      .filter(([k]) => !['at','kind','from','to'].includes(k))
+      .map(([k,v]) => `${k}=${esc(typeof v === 'object' ? JSON.stringify(v) : v)}`)
+      .join(' ');
+    const hit = ['node','run','branch','approval'].includes(ev.kind);
+    return `<div class="tl ${ev.kind==='crash'?'crash':(hit?'hit':'')}">[${esc(ev.at)}] <b>${esc(ev.kind)}</b> ${esc(ev.from)} → <b>${esc(ev.to)}</b> ${extra}</div>`;
+  }).join('');
+}
+
+health();
+refreshButtons();
+</script>
+</body>
+</html>

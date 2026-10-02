@@ -1,0 +1,14 @@
+services:
+  agent-flow:
+    build: .
+    ports:
+      - "8132:8132"
+    environment:
+      LOG_LEVEL: INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8132/api/health',timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
